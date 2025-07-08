@@ -1,7 +1,11 @@
 import tweepy
 import gspread
 import pandas as pd
+import os
+import json
 from google.oauth2.service_account import Credentials
+import gspread
+
 
 # === 1. Configuración de credenciales ===
 BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAPTA2wEAAAAAKmpzcWqKNwk5bXTyQLqDVw%2FkbD4%3DV3cut6SLnP4XSM0kMtcghYeci7UlPBnzESlD6JBrH7bDONf6Kz"
@@ -9,11 +13,9 @@ client = tweepy.Client(bearer_token=BEARER_TOKEN, wait_on_rate_limit=True)
 
 # === 2. Google Sheets ===
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPES)
+creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 gc = gspread.authorize(creds)
-SHEET_NAME = 'tweets_candidatos'  # Cambia por el nombre de tu hoja
-sh = gc.open(SHEET_NAME)
-worksheet = sh.sheet1
 
 # === 3. Usuario objetivo ===
 usuario = "jmilei"  # Cambia esto por el usuario que quieres analizar
