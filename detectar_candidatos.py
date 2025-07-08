@@ -10,7 +10,10 @@ BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAPTA2wEAAAAAKmpzcWqKNwk5bXTyQLqDVw%2FkbD4%3D
 client = tweepy.Client(bearer_token=BEARER_TOKEN, wait_on_rate_limit=True)
 
 # === 2. Google Sheets ===
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 gc = gspread.authorize(creds)
