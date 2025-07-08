@@ -5,7 +5,10 @@ import streamlit as st
 st.write("Claves en st.secrets:", list(st.secrets.keys()))
 
 creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
-scopes = ['https://www.googleapis.com/auth/spreadsheets']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 gc = gspread.authorize(creds)
 SHEET_NAME = 'tweets_candidatos'
