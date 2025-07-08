@@ -2,9 +2,9 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-# === Google Sheets ===
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPES)
+creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
+scopes = ['https://www.googleapis.com/auth/spreadsheets']
+creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 gc = gspread.authorize(creds)
 SHEET_NAME = 'tweets_candidatos'
 sh = gc.open(SHEET_NAME)
