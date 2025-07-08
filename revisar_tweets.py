@@ -1,11 +1,11 @@
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
-import streamlit as st
+
 st.write("Claves en st.secrets:", list(st.secrets.keys()))
 
 creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
-SCOPES = [
+scopes = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
