@@ -1,0 +1,5 @@
+streamlit
+tweepy
+gspread
+pandas
+google-auth
