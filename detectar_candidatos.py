@@ -1,79 +1,162 @@
 import tweepy
 import gspread
-import pandas as pd
-import os
-import json
 from google.oauth2.service_account import Credentials
+import json
+import os
+import time
+from datetime import datetime
 
-# === 1. Configuración de credenciales ===
-BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAPTA2wEAAAAAKmpzcWqKNwk5bXTyQLqDVw%2FkbD4%3DV3cut6SLnP4XSM0kMtcghYeci7UlPBnzESlD6JBrH7bDONf6Kz"
-client = tweepy.Client(bearer_token=BEARER_TOKEN, wait_on_rate_limit=True)
+def get_google_credentials():
+    creds_json = os.getenv('GOOGLE_CREDENTIALS')
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        credentials = Credentials.from_service_account_info(creds_dict)
+        return credentials.with_scopes([
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ])
+    return None
 
-# === 2. Google Sheets ===
-SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-]
-creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-gc = gspread.authorize(creds)
-SHEET_NAME = 'tweets_candidatos'
-sh = gc.open(SHEET_NAME)
-worksheet = sh.sheet1  # <--- Definido antes de usar
+def setup_twitter_api():
+    bearer_token = os.getenv('TWITTER_BEARER_TOKEN')
+    if not bearer_token:
+        print("❌ Error: TWITTER_BEARER_TOKEN no encontrado")
+        return None
+    return tweepy.Client(bearer_token=bearer_token, wait_on_rate_limit=True)
 
-# === 3. Usuario objetivo ===
-usuario = "jmilei"  # Cambia esto por el usuario que quieres analizar
-user = client.get_user(username=usuario)
-user_id = user.data.id
+def connect_to_sheets():
+    credentials = get_google_credentials()
+    if credentials:
+        return gspread.authorize(credentials)
+    return None
 
-# === 4. Leer IDs ya guardados ===
-ids_existentes = set([row[0] for row in worksheet.get_all_values()[1:]])
+def get_last_tweet_id(sheet):
+    try:
+        all_values = sheet.get_all_values()
+        if len(all_values) > 1:
+            last_row = all_values[-1]
+            if len(last_row) >= 5:
+                return last_row[4]
+    except Exception as e:
+        print(f"⚠️ Error obteniendo último tweet ID: {e}")
+    return None
 
-# === 5. Leer el último tweet procesado (si existe) ===
-ultimo_id_file = "ultimo_id.txt"
-since_id = None
-if os.path.exists(ultimo_id_file):
-    with open(ultimo_id_file, "r") as f:
-        since_id = f.read().strip() or None
+def monitor_tweets():
+    print("🚀 Iniciando monitoreo continuo de tweets (todos, sin filtro)...")
+    print(f"⏰ Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    twitter_client = setup_twitter_api()
+    gc = connect_to_sheets()
+    if not twitter_client or not gc:
+        print("❌ Error: No se pudieron configurar las APIs")
+        return
 
-# === 6. Descargar solo tweets nuevos ===
-max_results = 100
-params = {
-    "id": user_id,
-    "max_results": max_results,
-    "tweet_fields": ["id", "text", "referenced_tweets", "created_at", "lang"],
-    "expansions": ["referenced_tweets.id", "author_id"]
-}
-if since_id:
-    params["since_id"] = since_id
+    try:
+        sheet = gc.open("tweets_candidatos").sheet1
+        print("✅ Hoja de cálculo encontrada")
+    except gspread.SpreadsheetNotFound:
+        print("📝 Creando nueva hoja de cálculo...")
+        spreadsheet = gc.create("tweets_candidatos")
+        sheet = spreadsheet.sheet1
+        sheet.append_row(['usuario', 'contenido', 'fecha', 'url', 'id_tweet', 'estado', 'tipo'])
+        print("✅ Hoja de cálculo creada")
 
-print(f"Buscando tweets nuevos de @{usuario} desde ID {since_id}...")
+    existing_ids = set()
+    try:
+        existing_data = sheet.col_values(5)
+        existing_ids = set(existing_data[1:])
+        print(f"📋 {len(existing_ids)} tweets ya en la base de datos")
+    except:
+        print("📋 Base de datos vacía")
 
-response = client.get_users_tweets(**params)
-nuevos_tweets = response.data if response.data else []
+    last_tweet_id = get_last_tweet_id(sheet)
+    if last_tweet_id:
+        print(f"🔄 Continuando desde tweet ID: {last_tweet_id}")
+    else:
+        print("🆕 Empezando desde ahora")
 
-# === 7. Procesar y guardar solo originales y citas ===
-max_id = since_id
-for tweet in nuevos_tweets:
-    tweet_id = str(tweet.id)
-    es_cita = False
-    es_original = True
-    if hasattr(tweet, "referenced_tweets") and tweet.referenced_tweets:
-        for ref in tweet.referenced_tweets:
-            if ref.type == "quoted":
-                es_cita = True
-            else:
-                es_original = False
-    if (es_original or es_cita) and tweet_id not in ids_existentes:
-        url = f"https://x.com/{usuario}/status/{tweet_id}"
-        worksheet.append_row([tweet_id, tweet.text, url, "", "pendiente"])
-        print(f"Agregado tweet {tweet_id}")
-    if max_id is None or int(tweet_id) > int(max_id):
-        max_id = tweet_id
+    ciclo = 0
 
-# === 8. Guardar el último tweet procesado ===
-if max_id:
-    with open(ultimo_id_file, "w") as f:
-        f.write(str(max_id))
+    while True:
+        ciclo += 1
+        print(f"\n🔄 Ciclo #{ciclo} - {datetime.now().strftime('%H:%M:%S')}")
+        candidatos_encontrados = 0
+        tweets_procesados = 0
 
-print("Revisión de tweets nuevos finalizada.")
+        try:
+            # Query: todos los tweets y retweets con comentario en español
+            query = '(lang:es) (-is:retweet OR is:quote)'
+            search_params = {
+                'query': query,
+                'tweet_fields': ['created_at', 'author_id', 'public_metrics', 'context_annotations', 'referenced_tweets'],
+                'user_fields': ['username', 'name', 'verified'],
+                'expansions': ['author_id', 'referenced_tweets.id'],
+                'max_results': 10
+            }
+            if last_tweet_id:
+                search_params['since_id'] = last_tweet_id
+
+            tweets = tweepy.Paginator(
+                twitter_client.search_recent_tweets,
+                **search_params
+            ).flatten(limit=50)
+
+            for tweet in tweets:
+                tweets_procesados += 1
+                if str(tweet.id) in existing_ids:
+                    continue
+
+                tweet_type = "original"
+                if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
+                    for ref in tweet.referenced_tweets:
+                        if ref.type == "quoted":
+                            tweet_type = "retweet_con_comentario"
+                            break
+
+                if tweet_type in ["original", "retweet_con_comentario"]:
+                    user = None
+                    if hasattr(tweet, 'includes') and tweet.includes and 'users' in tweet.includes:
+                        user = next((u for u in tweet.includes['users'] if u.id == tweet.author_id), None)
+                    if user:
+                        tweet_data = [
+                            user.username,
+                            tweet.text.replace('\n', ' ').replace('\r', ' ')[:500],
+                            tweet.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                            f"https://twitter.com/{user.username}/status/{tweet.id}",
+                            str(tweet.id),
+                            'pendiente',
+                            tweet_type
+                        ]
+                        sheet.append_row(tweet_data)
+                        candidatos_encontrados += 1
+                        existing_ids.add(str(tweet.id))
+                        last_tweet_id = str(tweet.id)
+                        print(f"✅ Guardado: @{user.username} ({tweet_type})")
+                        print(f"   📝 {tweet.text[:80]}...")
+
+            print(f"🎯 Ciclo #{ciclo}: {candidatos_encontrados} nuevos tweets guardados")
+            print(f"⏳ Esperando 5 minutos hasta el próximo ciclo...")
+            time.sleep(300)  # 5 minutos
+
+        except tweepy.TooManyRequests:
+            print(f"⏸️ Rate limit alcanzado. Esperando 15 minutos...")
+            time.sleep(900)
+            continue
+        except Exception as e:
+            print(f"❌ Error general: {e}")
+            print("🔄 Esperando 1 minuto antes de reintentar...")
+            time.sleep(60)
+            continue
+
+def main():
+    try:
+        monitor_tweets()
+    except KeyboardInterrupt:
+        print("\n🛑 Monitoreo detenido por el usuario")
+    except Exception as e:
+        print(f"❌ Error crítico: {e}")
+        print("🔄 Reiniciando en 60 segundos...")
+        time.sleep(60)
+        main()
+
+if __name__ == "__main__":
+    main()
