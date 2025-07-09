@@ -7,7 +7,6 @@ import json
 # Configurar credenciales de Google
 def get_google_credentials():
     try:
-        # Leer desde secrets de Streamlit
         creds_json = st.secrets["GOOGLE_CREDENTIALS"]
         creds_dict = json.loads(creds_json)
         credentials = Credentials.from_service_account_info(creds_dict)
@@ -37,31 +36,31 @@ def main():
         return
     
     try:
-        # Abrir la hoja de cálculo
+        # Abrir la hoja de cálculo (ajusta el nombre si es necesario)
         sheet = gc.open("tweets_candidatos").sheet1
         
         # Obtener datos
         data = sheet.get_all_records()
-        
+        st.write("Datos crudos:", data)  # DEBUG
+
         if not data:
-            st.info("📭 No hay tweets pendientes de revisión")
+            st.info("📭 No hay tweets pendientes de revisión (la hoja está vacía)")
             return
         
         df = pd.DataFrame(data)
-        
+        st.write("DataFrame:", df.head())  # DEBUG
+
         # Filtrar solo tweets pendientes
         pending_tweets = df[df['estado'] == 'pendiente']
-        
+
         if pending_tweets.empty:
             st.success("🎉 ¡No hay tweets pendientes!")
-            
             # Mostrar estadísticas finales
             st.markdown("---")
             st.subheader("📊 Estadísticas")
             total_tweets = len(df)
             aprobados = len(df[df['estado'] == 'aprobado'])
             rechazados = len(df[df['estado'] == 'rechazado'])
-            
             col1, col2, col3 = st.columns(3)
             col1.metric("Total", total_tweets)
             col2.metric("Aprobados", aprobados)
@@ -75,28 +74,20 @@ def main():
             with st.container():
                 st.markdown("---")
                 st.write(f"**Tweet #{idx + 1}**")
-                
-                col_info1, col_info2 = st.columns(2)
-                with col_info1:
-                    st.write(f"**👤 Autor:** @{tweet['usuario']}")
-                with col_info2:
-                    st.write(f"**📅 Fecha:** {tweet['fecha']}")
-                
-                st.write(f"**📝 Contenido:**")
-                st.info(tweet['contenido'])
-                
+                st.write(f"**📝 Texto:**")
+                st.info(tweet['texto'])
                 st.write(f"**🔗 URL:** [Ver tweet]({tweet['url']})")
+                st.write(f"**💬 Comentario:** {tweet['comentario']}")
                 
                 # Botones de acción
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
                     if st.button(f"✅ Aprobar", key=f"approve_{idx}", type="primary"):
-                        # Encontrar la fila correcta en Google Sheets
                         all_data = sheet.get_all_values()
                         for row_idx, row in enumerate(all_data[1:], start=2):  # Skip header
-                            if row[4] == str(tweet['id_tweet']):  # Comparar por ID del tweet
-                                sheet.update(f'F{row_idx}', 'aprobado')
+                            if row[0] == str(tweet['tweet_id']):  # tweet_id es la primera columna
+                                sheet.update(f'E{row_idx}', 'aprobado')  # 'estado' es la columna E
                                 st.success("✅ Tweet aprobado!")
                                 st.rerun()
                                 break
@@ -105,8 +96,8 @@ def main():
                     if st.button(f"❌ Rechazar", key=f"reject_{idx}", type="secondary"):
                         all_data = sheet.get_all_values()
                         for row_idx, row in enumerate(all_data[1:], start=2):
-                            if row[4] == str(tweet['id_tweet']):
-                                sheet.update(f'F{row_idx}', 'rechazado')
+                            if row[0] == str(tweet['tweet_id']):
+                                sheet.update(f'E{row_idx}', 'rechazado')
                                 st.success("❌ Tweet rechazado!")
                                 st.rerun()
                                 break
