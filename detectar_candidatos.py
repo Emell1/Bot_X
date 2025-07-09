@@ -135,7 +135,7 @@ def monitor_tweets():
 
             print(f"🎯 Ciclo #{ciclo}: {candidatos_encontrados} nuevos tweets guardados")
             print(f"⏳ Esperando 5 minutos hasta el próximo ciclo...")
-            time.sleep(300)  # 5 minutos
+            time.sleep(900)  # 15 minutos
 
         except tweepy.TooManyRequests:
             print(f"⏸️ Rate limit alcanzado. Esperando 15 minutos...")
