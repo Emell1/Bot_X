@@ -58,6 +58,7 @@ def monitor_tweets():
     try:
         sheet = gc.open("tweets_candidatos").sheet1
         print("✅ Hoja de cálculo encontrada")
+        print("URL de la hoja:", sheet.spreadsheet.url)
     except gspread.SpreadsheetNotFound:
         print("📝 Creando nueva hoja de cálculo...")
         spreadsheet = gc.create("tweets_candidatos")
