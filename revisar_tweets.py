@@ -6,6 +6,7 @@ import json
 
 
 st.write("DEBUG: ¿GOOGLE_CREDENTIALS en secrets?", "GOOGLE_CREDENTIALS" in st.secrets)
+st.write(st.secrets["GOOGLE_CREDENTIALS"])
 if "GOOGLE_CREDENTIALS" in st.secrets:
     try:
         creds = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
