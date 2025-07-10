@@ -4,6 +4,17 @@ import pandas as pd
 from google.oauth2.service_account import Credentials
 import json
 
+
+st.write("DEBUG: ¿GOOGLE_CREDENTIALS en secrets?", "GOOGLE_CREDENTIALS" in st.secrets)
+if "GOOGLE_CREDENTIALS" in st.secrets:
+    try:
+        creds = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        st.write("DEBUG: JSON cargado correctamente")
+    except Exception as e:
+        st.write(f"DEBUG: Error al cargar JSON: {e}")
+else:
+    st.write("DEBUG: No se encontró GOOGLE_CREDENTIALS en secrets")
+
 # Configurar credenciales de Google
 def get_google_credentials():
     try:
