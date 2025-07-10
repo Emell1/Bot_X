@@ -6,6 +6,7 @@ import os
 import time
 from datetime import datetime
 
+# --- CONFIGURACIÓN GOOGLE SHEETS ---
 def get_google_credentials():
     creds_json = os.getenv('GOOGLE_CREDENTIALS')
     if creds_json:
@@ -17,6 +18,13 @@ def get_google_credentials():
         ])
     return None
 
+def connect_to_sheets():
+    credentials = get_google_credentials()
+    if credentials:
+        return gspread.authorize(credentials)
+    return None
+
+# --- CONFIGURACIÓN TWITTER ---
 def setup_twitter_api():
     bearer_token = os.getenv('TWITTER_BEARER_TOKEN')
     if not bearer_token:
@@ -24,23 +32,19 @@ def setup_twitter_api():
         return None
     return tweepy.Client(bearer_token=bearer_token, wait_on_rate_limit=True)
 
-def connect_to_sheets():
-    credentials = get_google_credentials()
-    if credentials:
-        return gspread.authorize(credentials)
-    return None
-
+# --- OBTENER ÚLTIMO TWEET GUARDADO ---
 def get_last_tweet_id(sheet):
     try:
         all_values = sheet.get_all_values()
         if len(all_values) > 1:
             last_row = all_values[-1]
-            if len(last_row) >= 5:
-                return last_row[4]
+            if len(last_row) >= 1:
+                return last_row[0]  # tweet_id es la primera columna
     except Exception as e:
         print(f"⚠️ Error obteniendo último tweet ID: {e}")
     return None
 
+# --- MONITOREO Y ESCRITURA ---
 def monitor_tweets():
     print("🚀 Iniciando monitoreo continuo de tweets (todos, sin filtro)...")
     print(f"⏰ Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -50,6 +54,7 @@ def monitor_tweets():
         print("❌ Error: No se pudieron configurar las APIs")
         return
 
+    # --- ABRIR O CREAR HOJA ---
     try:
         sheet = gc.open("tweets_candidatos").sheet1
         print("✅ Hoja de cálculo encontrada")
@@ -57,13 +62,14 @@ def monitor_tweets():
         print("📝 Creando nueva hoja de cálculo...")
         spreadsheet = gc.create("tweets_candidatos")
         sheet = spreadsheet.sheet1
-        sheet.append_row(['usuario', 'contenido', 'fecha', 'url', 'id_tweet', 'estado', 'tipo'])
+        sheet.append_row(['tweet_id', 'texto', 'url', 'comentario', 'estado'])
         print("✅ Hoja de cálculo creada")
 
+    # --- OBTENER IDS EXISTENTES ---
     existing_ids = set()
     try:
-        existing_data = sheet.col_values(5)
-        existing_ids = set(existing_data[1:])
+        existing_data = sheet.col_values(1)  # tweet_id es la primera columna
+        existing_ids = set(existing_data[1:])  # saltar cabecera
         print(f"📋 {len(existing_ids)} tweets ya en la base de datos")
     except:
         print("📋 Base de datos vacía")
@@ -105,36 +111,23 @@ def monitor_tweets():
                 if str(tweet.id) in existing_ids:
                     continue
 
-                tweet_type = "original"
-                if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
-                    for ref in tweet.referenced_tweets:
-                        if ref.type == "quoted":
-                            tweet_type = "retweet_con_comentario"
-                            break
+                # --- DATOS PARA LA HOJA ---
+                tweet_id = str(tweet.id)
+                texto = tweet.text.replace('\n', ' ').replace('\r', ' ')[:500]
+                url = f"https://twitter.com/i/web/status/{tweet.id}"
+                comentario = ""  # vacío por defecto
+                estado = "pendiente"
 
-                if tweet_type in ["original", "retweet_con_comentario"]:
-                    user = None
-                    if hasattr(tweet, 'includes') and tweet.includes and 'users' in tweet.includes:
-                        user = next((u for u in tweet.includes['users'] if u.id == tweet.author_id), None)
-                    if user:
-                        tweet_data = [
-                            user.username,
-                            tweet.text.replace('\n', ' ').replace('\r', ' ')[:500],
-                            tweet.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                            f"https://twitter.com/{user.username}/status/{tweet.id}",
-                            str(tweet.id),
-                            'pendiente',
-                            tweet_type
-                        ]
-                        sheet.append_row(tweet_data)
-                        candidatos_encontrados += 1
-                        existing_ids.add(str(tweet.id))
-                        last_tweet_id = str(tweet.id)
-                        print(f"✅ Guardado: @{user.username} ({tweet_type})")
-                        print(f"   📝 {tweet.text[:80]}...")
+                # --- ESCRIBIR EN LA HOJA ---
+                sheet.append_row([tweet_id, texto, url, comentario, estado])
+                candidatos_encontrados += 1
+                existing_ids.add(tweet_id)
+                last_tweet_id = tweet_id
+                print(f"✅ Guardado: {tweet_id}")
+                print(f"   📝 {texto[:80]}...")
 
             print(f"🎯 Ciclo #{ciclo}: {candidatos_encontrados} nuevos tweets guardados")
-            print(f"⏳ Esperando 5 minutos hasta el próximo ciclo...")
+            print(f"⏳ Esperando 15 minutos hasta el próximo ciclo...")
             time.sleep(900)  # 15 minutos
 
         except tweepy.TooManyRequests:
