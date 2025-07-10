@@ -46,7 +46,7 @@ def get_last_tweet_id(sheet):
 
 # --- MONITOREO Y ESCRITURA ---
 def monitor_tweets():
-    print("🚀 Iniciando monitoreo continuo de tweets (todos, sin filtro)...")
+    print("🚀 Iniciando monitoreo continuo de tweets (query abierto)...")
     print(f"⏰ Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     twitter_client = setup_twitter_api()
     gc = connect_to_sheets()
@@ -58,7 +58,6 @@ def monitor_tweets():
     try:
         sheet = gc.open("tweets_candidatos").sheet1
         print("✅ Hoja de cálculo encontrada")
-        print("URL de la hoja:", sheet.spreadsheet.url)
     except gspread.SpreadsheetNotFound:
         print("📝 Creando nueva hoja de cálculo...")
         spreadsheet = gc.create("tweets_candidatos")
@@ -75,11 +74,12 @@ def monitor_tweets():
     except:
         print("📋 Base de datos vacía")
 
-    last_tweet_id = get_last_tweet_id(sheet)
-    if last_tweet_id:
-        print(f"🔄 Continuando desde tweet ID: {last_tweet_id}")
-    else:
-        print("🆕 Empezando desde ahora")
+    # --- (OPCIONAL) OBTENER ÚLTIMO TWEET ID ---
+    # last_tweet_id = get_last_tweet_id(sheet)
+    # if last_tweet_id:
+    #     print(f"🔄 Continuando desde tweet ID: {last_tweet_id}")
+    # else:
+    #     print("🆕 Empezando desde ahora")
 
     ciclo = 0
 
@@ -90,30 +90,29 @@ def monitor_tweets():
         tweets_procesados = 0
 
         try:
-            # Query: todos los tweets y retweets con comentario en español
-            query = '(lang:es) (-is:retweet OR is:quote)'
+            # Query abierto: todos los tweets en español
+            query = 'lang:es'
             search_params = {
                 'query': query,
-                'tweet_fields': ['created_at', 'author_id', 'public_metrics', 'context_annotations', 'referenced_tweets'],
-                'user_fields': ['username', 'name', 'verified'],
-                'expansions': ['author_id', 'referenced_tweets.id'],
+                'tweet_fields': ['created_at', 'author_id'],
                 'max_results': 10
             }
-            if last_tweet_id:
-                search_params['since_id'] = last_tweet_id
+            # Si quieres filtrar desde el último tweet, descomenta:
+            # if last_tweet_id:
+            #     search_params['since_id'] = last_tweet_id
 
             tweets = tweepy.Paginator(
                 twitter_client.search_recent_tweets,
                 **search_params
-            ).flatten(limit=50)
+            ).flatten(limit=20)
 
             for tweet in tweets:
                 tweets_procesados += 1
-                if str(tweet.id) in existing_ids:
+                print(f"Tweet recibido: {tweet.id} - {tweet.text[:80]}")
+                tweet_id = str(tweet.id)
+                if tweet_id in existing_ids:
                     continue
 
-                # --- DATOS PARA LA HOJA ---
-                tweet_id = str(tweet.id)
                 texto = tweet.text.replace('\n', ' ').replace('\r', ' ')[:500]
                 url = f"https://twitter.com/i/web/status/{tweet.id}"
                 comentario = ""  # vacío por defecto
@@ -123,13 +122,11 @@ def monitor_tweets():
                 sheet.append_row([tweet_id, texto, url, comentario, estado])
                 candidatos_encontrados += 1
                 existing_ids.add(tweet_id)
-                last_tweet_id = tweet_id
                 print(f"✅ Guardado: {tweet_id}")
-                print(f"   📝 {texto[:80]}...")
 
             print(f"🎯 Ciclo #{ciclo}: {candidatos_encontrados} nuevos tweets guardados")
-            print(f"⏳ Esperando 15 minutos hasta el próximo ciclo...")
-            time.sleep(900)  # 15 minutos
+            print(f"⏳ Esperando 5 minutos hasta el próximo ciclo...")
+            time.sleep(300)  # 5 minutos
 
         except tweepy.TooManyRequests:
             print(f"⏸️ Rate limit alcanzado. Esperando 15 minutos...")
