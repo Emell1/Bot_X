@@ -45,8 +45,8 @@ def get_last_tweet_id(sheet):
     return None
 
 # --- MONITOREO Y ESCRITURA ---
-def monitor_tweets():
-    print("🚀 Iniciando monitoreo continuo de tweets (query abierto)...")
+def monitor_user_tweets(username):
+    print(f"🚀 Iniciando monitoreo de tweets de @{username} ...")
     print(f"⏰ Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     twitter_client = setup_twitter_api()
     gc = connect_to_sheets()
@@ -74,12 +74,14 @@ def monitor_tweets():
     except:
         print("📋 Base de datos vacía")
 
-    # --- (OPCIONAL) OBTENER ÚLTIMO TWEET ID ---
-    # last_tweet_id = get_last_tweet_id(sheet)
-    # if last_tweet_id:
-    #     print(f"🔄 Continuando desde tweet ID: {last_tweet_id}")
-    # else:
-    #     print("🆕 Empezando desde ahora")
+    # --- OBTENER USER ID ---
+    try:
+        user = twitter_client.get_user(username=username)
+        user_id = user.data.id
+        print(f"👤 User ID de @{username}: {user_id}")
+    except Exception as e:
+        print(f"❌ Error obteniendo user_id de @{username}: {e}")
+        return
 
     ciclo = 0
 
@@ -87,42 +89,33 @@ def monitor_tweets():
         ciclo += 1
         print(f"\n🔄 Ciclo #{ciclo} - {datetime.now().strftime('%H:%M:%S')}")
         candidatos_encontrados = 0
-        tweets_procesados = 0
 
         try:
-            # Query abierto: todos los tweets en español
-            query = 'lang:es'
-            search_params = {
-                'query': query,
-                'tweet_fields': ['created_at', 'author_id'],
-                'max_results': 10
-            }
-            # Si quieres filtrar desde el último tweet, descomenta:
-            # if last_tweet_id:
-            #     search_params['since_id'] = last_tweet_id
+            # --- OBTENER TWEETS DEL USUARIO ---
+            tweets = twitter_client.get_users_tweets(
+                id=user_id,
+                max_results=20,  # máximo permitido por la API en cada llamada
+                tweet_fields=['created_at', 'author_id']
+            )
 
-            tweets = tweepy.Paginator(
-                twitter_client.search_recent_tweets,
-                **search_params
-            ).flatten(limit=20)
+            if not tweets.data:
+                print("⚠️ No se encontraron tweets nuevos.")
+            else:
+                for tweet in tweets.data:
+                    tweet_id = str(tweet.id)
+                    if tweet_id in existing_ids:
+                        continue
 
-            for tweet in tweets:
-                tweets_procesados += 1
-                print(f"Tweet recibido: {tweet.id} - {tweet.text[:80]}")
-                tweet_id = str(tweet.id)
-                if tweet_id in existing_ids:
-                    continue
+                    texto = tweet.text.replace('\n', ' ').replace('\r', ' ')[:500]
+                    url = f"https://twitter.com/{username}/status/{tweet.id}"
+                    comentario = ""
+                    estado = "pendiente"
 
-                texto = tweet.text.replace('\n', ' ').replace('\r', ' ')[:500]
-                url = f"https://twitter.com/i/web/status/{tweet.id}"
-                comentario = ""  # vacío por defecto
-                estado = "pendiente"
-
-                # --- ESCRIBIR EN LA HOJA ---
-                sheet.append_row([tweet_id, texto, url, comentario, estado])
-                candidatos_encontrados += 1
-                existing_ids.add(tweet_id)
-                print(f"✅ Guardado: {tweet_id}")
+                    # --- ESCRIBIR EN LA HOJA ---
+                    sheet.append_row([tweet_id, texto, url, comentario, estado])
+                    candidatos_encontrados += 1
+                    existing_ids.add(tweet_id)
+                    print(f"✅ Guardado: {tweet_id}")
 
             print(f"🎯 Ciclo #{ciclo}: {candidatos_encontrados} nuevos tweets guardados")
             print(f"⏳ Esperando 5 minutos hasta el próximo ciclo...")
@@ -139,15 +132,9 @@ def monitor_tweets():
             continue
 
 def main():
-    try:
-        monitor_tweets()
-    except KeyboardInterrupt:
-        print("\n🛑 Monitoreo detenido por el usuario")
-    except Exception as e:
-        print(f"❌ Error crítico: {e}")
-        print("🔄 Reiniciando en 60 segundos...")
-        time.sleep(60)
-        main()
+    # Cambia aquí el usuario que quieres monitorizar (sin @)
+    username = "jmilei"  # <-- REEMPLAZA por el usuario deseado
+    monitor_user_tweets(username)
 
 if __name__ == "__main__":
     main()
