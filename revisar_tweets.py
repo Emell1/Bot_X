@@ -3,7 +3,8 @@ import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import json
-
+import streamlit as st
+st.write("DEBUG: keys en secrets:", list(st.secrets.keys()))
 
 st.write("DEBUG: ¿GOOGLE_CREDENTIALS en secrets?", "GOOGLE_CREDENTIALS" in st.secrets)
 st.write(st.secrets["GOOGLE_CREDENTIALS"])
